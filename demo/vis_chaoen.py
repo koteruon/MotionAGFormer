@@ -1,6 +1,7 @@
 import argparse
 import copy
 import glob
+import json
 import os
 import sys
 
@@ -13,6 +14,7 @@ from lib.preprocess import h36m_coco_format, revise_kpts
 from tqdm import tqdm
 
 sys.path.append(os.getcwd())
+
 import matplotlib
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
@@ -60,6 +62,10 @@ def show2Dpose(kps, img):
         cv2.line(img, (start[0], start[1]), (end[0], end[1]), lcolor if LR[j] else rcolor, thickness)
         cv2.circle(img, (start[0], start[1]), thickness=-1, color=(0, 255, 0), radius=3)
         cv2.circle(img, (end[0], end[1]), thickness=-1, color=(0, 255, 0), radius=3)
+
+        # Add text annotations for start and end points
+        cv2.putText(img, f"{c[0]}", (start[0], start[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        cv2.putText(img, f"{c[1]}", (end[0], end[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
 
     return img
 
@@ -203,8 +209,18 @@ def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11
     return flipped_data
 
 
+def save_data(video_post_out, output_dir, video_name, label):
+    json_data = {"file_name": video_name, "skeletons": video_post_out, "label": label, "length": len(video_post_out)}
+    output_dir += "annotation/"
+    os.makedirs(output_dir, exist_ok=True)
+    json_file_path = os.path.join(output_dir, f"{video_name}.json")
+    # 儲存 JSON 資料
+    with open(json_file_path, "w") as json_file:
+        json.dump(json_data, json_file, indent=4)
+
+
 @torch.no_grad()
-def get_pose3D(video_path, output_dir):
+def get_pose3D(video_path, output_dir, video_name, label):
     args, _ = argparse.ArgumentParser().parse_known_args()
     args.n_layers, args.dim_in, args.dim_feat, args.dim_rep, args.dim_out = 16, 3, 128, 512, 3
     args.mlp_ratio, args.act_layer = 4, nn.GELU
@@ -257,7 +273,8 @@ def get_pose3D(video_path, output_dir):
         cv2.imwrite(output_dir_2D + str(("%04d" % i)) + "_2D.png", image)
 
     print("\nGenerating 3D pose...")
-    for idx, clip in tqdm(enumerate(clips)):
+    video_post_out = []
+    for idx, clip in enumerate(clips):
         input_2D = normalize_screen_coordinates(clip, w=img_size[1], h=img_size[0])
         input_2D_aug = flip_data(input_2D)
 
@@ -274,10 +291,12 @@ def get_pose3D(video_path, output_dir):
         output_3D[:, :, 0, :] = 0
         post_out_all = output_3D[0].cpu().detach().numpy()
 
-        for j, post_out in enumerate(post_out_all):
+        post_out_to_world_all = []
+        for j, post_out in tqdm(enumerate(post_out_all)):
             rot = [0.1407056450843811, -0.1500701755285263, -0.755240797996521, 0.6223280429840088]
             rot = np.array(rot, dtype="float32")
             post_out = camera_to_world(post_out, R=rot, t=0)
+            post_out_to_world_all.append(post_out.copy().tolist())
             post_out[:, 2] -= np.min(post_out[:, 2])
             max_value = np.max(post_out)
             post_out /= max_value
@@ -295,8 +314,12 @@ def get_pose3D(video_path, output_dir):
                 output_dir_3D + str(("%04d" % (idx * 243 + j))) + "_3D.png", dpi=200, format="png", bbox_inches="tight"
             )
             plt.close(fig)
-
+        video_post_out += post_out_to_world_all
     print("Generating 3D pose successful!")
+
+    print("\nSave 3D pose data...")
+    save_data(video_post_out, output_dir, video_name, label)
+    print("Save 3D pose data successful!")
 
     ## all
     image_2d_dir = sorted(glob.glob(os.path.join(output_dir_2D, "*.png")))
@@ -337,16 +360,17 @@ def get_pose3D(video_path, output_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--video", type=str, default="sample_video.mp4", help="input video")
+    parser.add_argument("--label", type=str, default="-1", help="action label")
     parser.add_argument("--gpu", type=str, default="0", help="input video")
     args = parser.parse_args()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
-    video_path = "./demo/video/" + args.video
+    video_path = args.video
     video_name = video_path.split("/")[-1].split(".")[0]
     output_dir = "./demo/output/" + video_name + "/"
 
     get_pose2D(video_path, output_dir)
-    get_pose3D(video_path, output_dir)
+    get_pose3D(video_path, output_dir, video_name, args.label)
     img2video(video_path, output_dir)
     print("Generating demo successful!")

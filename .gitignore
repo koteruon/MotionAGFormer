@@ -3,3 +3,7 @@
 *.pyc
 wandb
 checkpoint/*.pth.tr
+data
+demo/lib
+demo/output
+demo/video
