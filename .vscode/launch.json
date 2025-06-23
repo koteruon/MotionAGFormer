@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "demo/vis.py",
             "console": "integratedTerminal",
-            "args": ["--video", "demo/video/bhpull/bhpull_01.mp4"],
+            "args": ["--video", "demo/video/backhand_chop_01.avi"],
         },
         {
             "name": "vis chaoen",
@@ -18,13 +18,20 @@
             "request": "launch",
             "program": "demo/vis_chaoen.py",
             "console": "integratedTerminal",
-            "args": ["--video", "demo/video/bhpull/bhpull_01.mp4"],
+            "args": ["--video", "demo/video/stroke_postures"],
         },
         {
-            "name": "get_unit_quaternion",
+            "name": "get_start_end_frame",
             "type": "debugpy",
             "request": "launch",
-            "program": "demo/get_unit_quaternion.py",
+            "program": "demo/get_start_end_frame.py",
+            "console": "integratedTerminal",
+        },
+        {
+            "name": "skeleton_transform_slider",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "demo/skeleton_transform_slider.py",
             "console": "integratedTerminal",
         }
     ]
