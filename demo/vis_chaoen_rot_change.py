@@ -29,18 +29,7 @@ plt.switch_backend("agg")
 matplotlib.rcParams["pdf.fonttype"] = 42
 matplotlib.rcParams["ps.fonttype"] = 42
 
-action_map = {
-    "backhand_chop": "1",
-    "backhand_flick": "2",
-    "backhand_push": "3",
-    "backhand_topspin": "4",
-    "forehand_chop": "5",
-    "forehand_drive": "6",
-    "forehand_smash": "7",
-    "forehand_topspin": "8",
-}
-annotation_dir = "demo/select_frame"
-annotation_suffix = "_left_01_annotations.csv"
+action_map = {"bhpull": "0", "fhpull": "1", "bhc": "2", "fhc": "3"}
 
 
 def show2Dpose(kps, img):
@@ -149,9 +138,6 @@ def get_pose2D(video_path, output_dir):
 
 def img2video_ori(video_path, output_dir):
     print("\nSave original video...")
-    video_name = os.path.basename(video_path)
-    video_filename, video_ext = os.path.splitext(video_name)
-    annotation_path = os.path.join(annotation_dir, video_filename.rsplit("_", 1)[0] + annotation_suffix)
     cap = cv2.VideoCapture(video_path)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -164,7 +150,7 @@ def img2video_ori(video_path, output_dir):
 
     # 初始化錄製一段段影片
     segment_writers = []
-    df = pd.read_csv(annotation_path)
+    df = pd.read_csv("annotations.csv")
     start_end_frames = df[["start_frame", "end_frame"]].values.tolist()
     for segment_index, (start_frame, end_frame) in tqdm(enumerate(start_end_frames)):
         segment_name = f"{video_name}_{segment_index:02d}.mp4"
@@ -189,9 +175,6 @@ def img2video_ori(video_path, output_dir):
 
 def img2video(video_path, output_dir):
     print("\nSave 3D pose video...")
-    video_name = os.path.basename(video_path)
-    video_filename, video_ext = os.path.splitext(video_name)
-    annotation_path = os.path.join(annotation_dir, video_filename.rsplit("_", 1)[0] + annotation_suffix)
     cap = cv2.VideoCapture(video_path)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -207,7 +190,7 @@ def img2video(video_path, output_dir):
 
     # 初始化錄製一段段影片
     segment_writers = []
-    df = pd.read_csv(annotation_path)
+    df = pd.read_csv("annotations.csv")
     start_end_frames = df[["start_frame", "end_frame"]].values.tolist()
     for segment_index, (start_frame, end_frame) in tqdm(enumerate(start_end_frames)):
         segment_name = f"{video_name}_{segment_index:02d}.mp4"
@@ -300,46 +283,12 @@ def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11
     return flipped_data
 
 
-def save_all_data(video_post_out, output_dir, video_name):
+def save_data(video_post_out, output_dir, video_name, label):
     print("\nSave 3D pose data...")
-    person_keypoint_list = []
-    video_filename, video_ext = os.path.splitext(video_name)
-    input_video_stroke_name, input_video_id = video_filename.rsplit("_", 1)
-    input_video_stroke_id = action_map[input_video_stroke_name]
+    annotation_dir = os.path.join(output_dir, "annotation")
+    os.makedirs(annotation_dir, exist_ok=True)
 
-    hit_datasets_annotation_dir = os.path.join(output_dir, input_video_stroke_name)
-    os.makedirs(hit_datasets_annotation_dir, exist_ok=True)
-
-    for frame_count, skeletons in enumerate(video_post_out, start=1):
-        image_id = int(f"{int(input_video_stroke_id)}{int(input_video_id):03d}{int(frame_count):05d}")
-        data = {
-            "image_id": image_id,
-            "category_id": 0,
-            "bbox": [],  # xyxy
-            "keypoints": skeletons,
-            "score": 1.0,
-        }
-        person_keypoint_list.append(data)
-
-    json_file_path = os.path.join(hit_datasets_annotation_dir, f"stroke_postures_train_bbox_kpts.json")
-    # 儲存 JSON 資料
-    with open(json_file_path, "w") as json_file:
-        json.dump(person_keypoint_list, json_file, indent=4)
-
-    print("Save 3D pose data successful!")
-
-
-def save_data(video_post_out, output_dir, video_name):
-    print("\nSave 3D pose data...")
-    video_filename, video_ext = os.path.splitext(video_name)
-    input_video_stroke_name, input_video_id = video_filename.rsplit("_", 1)
-    input_video_stroke_id = action_map[input_video_stroke_name]
-    annotation_path = os.path.join(annotation_dir, input_video_stroke_name + annotation_suffix)
-
-    output_annotation_dir = os.path.join(output_dir, "annotations")
-    os.makedirs(output_annotation_dir, exist_ok=True)
-
-    df = pd.read_csv(annotation_path)
+    df = pd.read_csv("annotations.csv")
     for segment_index, row in df.iterrows():
         print(f"\nSaving 3D pose data for segment {segment_index}...")
         start_frame = row["start_frame"]
@@ -347,13 +296,13 @@ def save_data(video_post_out, output_dir, video_name):
         segment_post_out = video_post_out[start_frame : end_frame + 1]
 
         json_data = {
-            "file_name": f"{video_filename}_{segment_index:02d}",
+            "file_name": f"{video_name}_{segment_index:02d}",
             "skeletons": segment_post_out,
-            "label": input_video_stroke_id,
+            "label": label,
             "length": len(segment_post_out),
         }
 
-        json_file_path = os.path.join(output_annotation_dir, f"{video_filename}_{segment_index:02d}.json")
+        json_file_path = os.path.join(annotation_dir, f"{video_name}_{segment_index:02d}.json")
         # 儲存 JSON 資料
         with open(json_file_path, "w") as json_file:
             json.dump(json_data, json_file, indent=4)
@@ -517,24 +466,22 @@ if __name__ == "__main__":
         else [video_path]
     )
     for video_path in video_paths:
-        video_name = video_path.split("/")[-1]
-        video_filename, video_ext = os.path.splitext(video_name)
+        video_dir = video_path.split("/")[-1].split("_")[0]
+        label = action_map[video_dir] if video_dir in action_map else -1
+        video_name = video_path.split("/")[-1].split(".")[0]
 
         # 取得當前日期
         today_date = datetime.today().strftime("%Y%m%d")
         output_index = 0
-        output_dir = f"./demo/output/{video_filename}_{today_date}_{output_index:02d}/"
+        output_dir = f"./demo/output/{video_name}_{today_date}_{output_index:02d}/"
         while os.path.exists(output_dir):
             output_index += 1
-            output_dir = f"./demo/output/{video_filename}_{today_date}_{output_index:02d}/"
+            output_dir = f"./demo/output/{video_name}_{today_date}_{output_index:02d}/"
 
         get_pose2D(video_path, output_dir)
         video_post_out = get_pose3D(video_path, output_dir)
         img2video_ori(video_path, output_dir)
         img2video(video_path, output_dir)
-        save_data(video_post_out, output_dir, video_name)
-
-        hit_output_dir = "hit_datasets/annotations"
-        save_all_data(video_post_out, hit_output_dir, video_name)
+        save_data(video_post_out, output_dir, video_name, label)
 
     print("Generating demo successful!")
